@@ -29,45 +29,34 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Divider
 import androidx.compose.runtime.*
 import androidx.compose.ui.unit.dp
 
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import br.com.ideabit.frotaapi.util.UserPreferences
 
 class MainActivity : ComponentActivity() {
     companion object {
-        var token:String? = null
+        var token: String? = ""
     }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
         setContent {
             FrotaApiTheme {
-                val saidas = remember { mutableStateListOf<SaidaModel>() }
-
-                saidaScreen(
-                    saidas = saidas,
-                    onAddOrEditClick = {
-                        val incompleta = saidas.find { !it.completa }
-                        if (incompleta != null) {
-                            // editarSaida(incompleta)
-                        } else {
-                            // criarNovaSaida()
-                        }
-                    },
-                    onSyncClick = {
-                        val pendentes = saidas.filter { !it.sincronizada }
-                        // sincronizarSaidas(pendentes)
-                    }
-                )
+                TelaPrincipal()
             }
         }
-
-    }
-
-    @Override
-    override fun onResume() {
-        super.onResume()
-        getLogin()
     }
 
     private fun getEndPoint() : Endpoint {
@@ -118,20 +107,80 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun saidaScreen(
-    saidas: List<SaidaModel>,
-    onAddOrEditClick: () -> Unit,
-    onSyncClick: () -> Unit
-) {
+fun TelaPrincipal() {
+    val context = LocalContext.current
+    val userPrefs = remember { UserPreferences(context) }
+
+    LaunchedEffect(Unit) {
+        val user = userPrefs.getUser()
+        val pass = userPrefs.getPassword()
+
+        if (!user.isNullOrEmpty() && !pass.isNullOrEmpty()) {
+            println("Login salvo: $user / $pass")
+            // Você pode já fazer login automático aqui, se quiser
+            TODO("Implementar o login ao iniciar aplicação")
+        }
+    }
+
+    // Lista simulada de saídas (poderia vir de Room, ViewModel, etc.)
+    val saidas = remember {
+        mutableStateListOf(
+            SaidaModel("Alef Santos", "10:15", 5000, "12:15", 5001, sincronizada = false, completa = true),
+            SaidaModel("João Silva", "14:00", 5002, "16:00", 5003, sincronizada = false, completa = false),
+        )
+    }
+
+    var showDialog by remember { mutableStateOf(false) }
+    if (showDialog) {
+        ModalCadastrarSaida(
+            onDismiss = { showDialog = false },
+            onConfirm = { novaSaida ->
+                saidas.add(novaSaida)
+                showDialog = false
+            }
+        )
+    }
+
+    var showLoginDialog by remember { mutableStateOf(false) }
+    if (showLoginDialog) {
+        LoginDialog(
+            onDismiss = { showLoginDialog = false },
+            onLogin = { usuario, senha ->
+                println("Usuário: $usuario, Senha: $senha")
+                // Aqui você pode chamar a função de login da sua API
+                // ex: viewModel.login(usuario, senha)
+            }
+        )
+    }
+
     Scaffold(
         floatingActionButton = {
-            FloatingActionButton(onClick = { onAddOrEditClick() }) {
-                Icon(Icons.Default.Add, contentDescription = "Adicionar ou Editar Saída")
+            FloatingActionButton(onClick = {
+                val incompleta = saidas.find { !it.completa }
+                if (incompleta != null) {
+                    // Lógica para editar a saída incompleta
+                    println("Editar saída de ${incompleta.nome_motorista}")
+                    showDialog = true
+                } else {
+                    // Lógica para criar nova saída
+                    println("Criar nova saída")
+                    showDialog = true
+                }
+            }) {
+                Icon(Icons.Filled.Add, contentDescription = "Adicionar ou Editar Saída")
             }
         },
         bottomBar = {
             Button(
-                onClick = { onSyncClick() },
+                onClick = {
+                    val pendentes = saidas.filter { !it.sincronizada }
+                    if (pendentes.isNotEmpty()) {
+                        println("Sincronizando ${pendentes.size} saídas...")
+                    } else {
+                        println("Nenhuma saída pendente")
+                    }
+                    showLoginDialog = true
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp)
@@ -140,11 +189,16 @@ fun saidaScreen(
             }
         }
     ) { innerPadding ->
-        LazyColumn(modifier = Modifier.padding(innerPadding)) {
+        LazyColumn(modifier = Modifier
+            .fillMaxSize()
+            .padding(innerPadding)) {
             items(saidas) { saida ->
                 if (!saida.sincronizada) {
-                    Text("Saída: ${saida.nome} - ${saida.horaSaida}")
-                    // Você pode usar Card, Divider etc. para deixar mais bonito
+                    Text(
+                        text = "Saída: ${saida.nome_motorista} - ${saida.horario_saida}",
+                        modifier = Modifier.padding(16.dp)
+                    )
+                    Divider()
                 }
             }
         }
@@ -155,7 +209,131 @@ fun saidaScreen(
 @Composable
 fun GreetingPreview() {
     FrotaApiTheme {
-        Greeting("Android")
+        TelaPrincipal()
     }
+}
+
+@Composable
+fun ModalCadastrarSaida(
+    onDismiss: () -> Unit,
+    onConfirm: (SaidaModel) -> Unit
+) {
+    var nome by remember { mutableStateOf("") }
+    var horarioSaida by remember { mutableStateOf("") }
+    var odometroSaida by remember { mutableStateOf("") }
+    var horarioRetorno by remember { mutableStateOf("") }
+    var odometroRetorno by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            Button(onClick = {
+                val saida = SaidaModel(
+                    nome_motorista = nome,
+                    horario_saida = horarioSaida,
+                    km_saida = odometroSaida.toIntOrNull() ?: 0,
+                    horario_retorno = horarioRetorno,
+                    km_retorno = odometroRetorno.toIntOrNull() ?: 0,
+                    sincronizada = false,
+                    completa = true
+                )
+                onConfirm(saida)
+                onDismiss()
+            }) {
+                Text("Salvar")
+            }
+        },
+        dismissButton = {
+            Button(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        },
+        title = { Text("Nova Saída") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = nome,
+                    onValueChange = { nome = it },
+                    label = { Text("Nome do Motorista") }
+                )
+                OutlinedTextField(
+                    value = horarioSaida,
+                    onValueChange = { horarioSaida = it },
+                    label = { Text("Horário de Saída") }
+                )
+                OutlinedTextField(
+                    value = odometroSaida,
+                    onValueChange = { odometroSaida = it },
+                    label = { Text("Odômetro Saída") },
+                    keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number)
+                )
+                OutlinedTextField(
+                    value = horarioRetorno,
+                    onValueChange = { horarioRetorno = it },
+                    label = { Text("Horário de Retorno") }
+                )
+                OutlinedTextField(
+                    value = odometroRetorno,
+                    onValueChange = { odometroRetorno = it },
+                    label = { Text("Odômetro Retorno") },
+                    keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number)
+                )
+            }
+        }
+    )
+}
+
+@Composable
+fun LoginDialog(
+    onDismiss: () -> Unit,
+    onLogin: (String, String) -> Unit
+) {
+    var usuario by remember { mutableStateOf("") }
+    var senha by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            Button(
+                onClick = {
+                    onLogin(usuario, senha)
+                    onDismiss()
+                }
+            ) {
+                Text("Login")
+            }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        },
+        title = { Text("Login") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = usuario,
+                    onValueChange = { usuario = it },
+                    label = { Text("Usuário") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions.Default.copy(
+                        imeAction = ImeAction.Next
+                    )
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = senha,
+                    onValueChange = { senha = it },
+                    label = { Text("Senha") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions.Default.copy(
+                        keyboardType = KeyboardType.Password,
+                        imeAction = ImeAction.Done
+                    )
+                )
+            }
+        }
+    )
 }
 

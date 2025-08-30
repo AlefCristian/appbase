@@ -38,10 +38,13 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import br.com.ideabit.frotaapi.util.SaidaDTO
+import br.com.ideabit.frotaapi.util.SaidaPreferences
 import br.com.ideabit.frotaapi.util.UserPreferences
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     companion object {
@@ -98,59 +101,57 @@ class MainActivity : ComponentActivity() {
                         println("Token: ${MainActivity.token}")
                     }
                 }
-
                 override fun onFailure(call: Call<JsonObject>, t: Throwable) {
                     println("Erro  de rede: ${t.message}")
                 }
             })
     }
 }
-
 @Composable
 fun TelaPrincipal() {
     val context = LocalContext.current
-    val userPrefs = remember { UserPreferences(context) }
+    val userPrefs = remember { UserPreferences(context.applicationContext) }
+    val saidaPrefs = remember { SaidaPreferences(context.applicationContext) }
 
-    LaunchedEffect(Unit) {
-        val user = userPrefs.getUser()
-        val pass = userPrefs.getPassword()
-
-        if (!user.isNullOrEmpty() && !pass.isNullOrEmpty()) {
-            println("Login salvo: $user / $pass")
-            // Você pode já fazer login automático aqui, se quiser
-            TODO("Implementar o login ao iniciar aplicação")
-        }
-    }
-
-    // Lista simulada de saídas (poderia vir de Room, ViewModel, etc.)
-    val saidas = remember {
-        mutableStateListOf(
-            SaidaModel("Alef Santos", "10:15", 5000, "12:15", 5001, sincronizada = false, completa = true),
-            SaidaModel("João Silva", "14:00", 5002, "16:00", 5003, sincronizada = false, completa = false),
-        )
-    }
-
-    var showDialog by remember { mutableStateOf(false) }
-    if (showDialog) {
-        ModalCadastrarSaida(
-            onDismiss = { showDialog = false },
-            onConfirm = { novaSaida ->
-                saidas.add(novaSaida)
-                showDialog = false
-            }
-        )
-    }
+    var usuario by remember { mutableStateOf("") }
+    var senha by remember { mutableStateOf("") }
 
     var showLoginDialog by remember { mutableStateOf(false) }
-    if (showLoginDialog) {
-        LoginDialog(
-            onDismiss = { showLoginDialog = false },
-            onLogin = { usuario, senha ->
-                println("Usuário: $usuario, Senha: $senha")
-                // Aqui você pode chamar a função de login da sua API
-                // ex: viewModel.login(usuario, senha)
+    var showDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        usuario = userPrefs.userFlow.first()
+        senha = userPrefs.passwordFlow.first()
+        showLoginDialog = usuario.isEmpty() || senha.isEmpty()
+    }
+
+    val saidas by saidaPrefs.saidasFlow.collectAsState(initial = emptyList())
+    val scope = rememberCoroutineScope()
+
+    var saidaSelecionada by remember { mutableStateOf<SaidaDTO?>(null) }
+
+    if (showDialog) {
+        ModalCadastrarSaida(
+            saidaExistente = saidaSelecionada,
+            onDismiss = { showDialog = false },
+            onConfirm = { saida ->
+                scope.launch {
+                    if (saida.id != null) {
+                        println("Atualizando saida")
+                        saidaPrefs.updateSaida(saida) // edição
+                    } else {
+                        println("Cadasntro saida")
+                        saidaPrefs.addSaida(saida) // novo
+                    }
+                }
+                showDialog = false
+                saidaSelecionada = null
             }
         )
+    }
+
+    if (showLoginDialog) {
+        LoginDialog(onDismiss = { showLoginDialog = false }, userPrefs = userPrefs)
     }
 
     Scaffold(
@@ -158,14 +159,13 @@ fun TelaPrincipal() {
             FloatingActionButton(onClick = {
                 val incompleta = saidas.find { !it.completa }
                 if (incompleta != null) {
-                    // Lógica para editar a saída incompleta
                     println("Editar saída de ${incompleta.nome_motorista}")
-                    showDialog = true
+                    saidaSelecionada = incompleta
                 } else {
-                    // Lógica para criar nova saída
                     println("Criar nova saída")
-                    showDialog = true
+                    saidaSelecionada = null
                 }
+                showDialog = true
             }) {
                 Icon(Icons.Filled.Add, contentDescription = "Adicionar ou Editar Saída")
             }
@@ -174,68 +174,119 @@ fun TelaPrincipal() {
             Button(
                 onClick = {
                     val pendentes = saidas.filter { !it.sincronizada }
-                    if (pendentes.isNotEmpty()) {
-                        println("Sincronizando ${pendentes.size} saídas...")
-                    } else {
-                        println("Nenhuma saída pendente")
-                    }
+                    println(
+                        if (pendentes.isNotEmpty())
+                            "Sincronizando ${pendentes.size} saídas..."
+                        else
+                            "Nenhuma saída pendente"
+                    )
                     showLoginDialog = true
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
+                modifier = Modifier.fillMaxWidth().padding(16.dp)
             ) {
                 Text("Sincronizar")
             }
         }
     ) { innerPadding ->
-        LazyColumn(modifier = Modifier
-            .fillMaxSize()
-            .padding(innerPadding)) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = innerPadding
+        ) {
             items(saidas) { saida ->
-                if (!saida.sincronizada) {
-                    Text(
-                        text = "Saída: ${saida.nome_motorista} - ${saida.horario_saida}",
-                        modifier = Modifier.padding(16.dp)
-                    )
-                    Divider()
-                }
+                Text("Motorista: ${saida.nome_motorista}")
+                Text("Horário saída: ${saida.horario_saida}")
+                Text("Km saída: ${saida.km_saida}")
+                Text("Retorno: ${saida.horario_retorno ?: "Não voltou"}")
+                Text("Km retorno: ${saida.km_retorno ?: "-"}")
+                Divider()
             }
         }
     }
 }
-
-@Preview(showBackground = true)
 @Composable
-fun GreetingPreview() {
-    FrotaApiTheme {
-        TelaPrincipal()
-    }
-}
+fun LoginDialog(
+    onDismiss: () -> Unit,
+    userPrefs: UserPreferences
+) {
+    val scope = rememberCoroutineScope()
 
+    // Coletar os valores salvos do DataStore
+    val savedUser by userPrefs.userFlow.collectAsState(initial = "")
+    val savedPass by userPrefs.passwordFlow.collectAsState(initial = "")
+
+    // Estados para edição
+    var usuario by remember { mutableStateOf(savedUser) }
+    var senha by remember { mutableStateOf(savedPass) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            Button(
+                onClick = {
+                    scope.launch {
+                        userPrefs.saveCredentials(usuario, senha)
+                        // Debug
+                        val testeUser = userPrefs.userFlow.first()
+                        println("Salvo: $testeUser")
+                    }
+                    onDismiss()
+                }
+            ) {
+                Text("Login")
+            }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        },
+        title = { Text("Login") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = usuario,
+                    onValueChange = { usuario = it },
+                    label = { Text("Usuário") },
+                    singleLine = true
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = senha,
+                    onValueChange = { senha = it },
+                    label = { Text("Senha") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true
+                )
+            }
+        }
+    )
+}
 @Composable
 fun ModalCadastrarSaida(
+    saidaExistente: SaidaDTO? = null,
     onDismiss: () -> Unit,
-    onConfirm: (SaidaModel) -> Unit
+    onConfirm: (SaidaDTO) -> Unit
 ) {
-    var nome by remember { mutableStateOf("") }
-    var horarioSaida by remember { mutableStateOf("") }
-    var odometroSaida by remember { mutableStateOf("") }
-    var horarioRetorno by remember { mutableStateOf("") }
-    var odometroRetorno by remember { mutableStateOf("") }
+    var nome by remember { mutableStateOf(saidaExistente?.nome_motorista ?: "") }
+    var horarioSaida by remember { mutableStateOf(saidaExistente?.horario_saida ?: "") }
+    var odometroSaida by remember { mutableStateOf(saidaExistente?.km_saida?.toString() ?: "") }
+    var horarioRetorno by remember { mutableStateOf(saidaExistente?.horario_retorno ?: "") }
+    var odometroRetorno by remember { mutableStateOf(saidaExistente?.km_retorno?.toString() ?: "") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
             Button(onClick = {
-                val saida = SaidaModel(
+                val completa = nome.isNotBlank() && horarioSaida.isNotBlank() && (odometroSaida.toIntOrNull() ?: 0) > 0
+                val saida = SaidaDTO(
+                    id = saidaExistente?.id, // mantém o id null
                     nome_motorista = nome,
                     horario_saida = horarioSaida,
                     km_saida = odometroSaida.toIntOrNull() ?: 0,
-                    horario_retorno = horarioRetorno,
-                    km_retorno = odometroRetorno.toIntOrNull() ?: 0,
-                    sincronizada = false,
-                    completa = true
+                    horario_retorno = horarioRetorno.ifBlank { null },
+                    km_retorno = odometroRetorno.toIntOrNull(),
+                    sincronizada = saidaExistente?.sincronizada ?: false,
+                    completa = completa
                 )
                 onConfirm(saida)
                 onDismiss()
@@ -248,7 +299,7 @@ fun ModalCadastrarSaida(
                 Text("Cancelar")
             }
         },
-        title = { Text("Nova Saída") },
+        title = { Text(if (saidaExistente != null) "Editar Saída" else "Nova Saída") },
         text = {
             Column {
                 OutlinedTextField(
@@ -283,57 +334,11 @@ fun ModalCadastrarSaida(
     )
 }
 
+@Preview(showBackground = true)
 @Composable
-fun LoginDialog(
-    onDismiss: () -> Unit,
-    onLogin: (String, String) -> Unit
-) {
-    var usuario by remember { mutableStateOf("") }
-    var senha by remember { mutableStateOf("") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            Button(
-                onClick = {
-                    onLogin(usuario, senha)
-                    onDismiss()
-                }
-            ) {
-                Text("Login")
-            }
-        },
-        dismissButton = {
-            OutlinedButton(onClick = onDismiss) {
-                Text("Cancelar")
-            }
-        },
-        title = { Text("Login") },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = usuario,
-                    onValueChange = { usuario = it },
-                    label = { Text("Usuário") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions.Default.copy(
-                        imeAction = ImeAction.Next
-                    )
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = senha,
-                    onValueChange = { senha = it },
-                    label = { Text("Senha") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions.Default.copy(
-                        keyboardType = KeyboardType.Password,
-                        imeAction = ImeAction.Done
-                    )
-                )
-            }
-        }
-    )
+fun GreetingPreview() {
+    FrotaApiTheme {
+        TelaPrincipal()
+    }
 }
 

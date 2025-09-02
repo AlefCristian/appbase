@@ -90,6 +90,7 @@ class MainActivity : ComponentActivity() {
                         val token = json?.get("token")?.asString
                         println(token)
                         MainActivity.token = token
+                        println("Token retornado do getLogin ${token}")
                     } else {
                         println("Erro: ${response.code()}")
                     }
@@ -97,6 +98,7 @@ class MainActivity : ComponentActivity() {
 
                 override fun onFailure(call: Call<JsonObject>, t: Throwable) {
                     println("Erro de rede ao fazer login: ${t.message}")
+
                 }
             })
     }
@@ -110,6 +112,7 @@ class MainActivity : ComponentActivity() {
             } else {
                 println("Erro : ${response.code()}")
                 println(response.message())
+                println("token do erro: ${MainActivity.token}")
                 false
             }
         } catch (e: Exception) {

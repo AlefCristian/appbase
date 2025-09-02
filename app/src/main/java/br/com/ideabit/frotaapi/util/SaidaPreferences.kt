@@ -16,8 +16,8 @@ data class SaidaDTO(
     val km_saida: Int,
     val horario_retorno: String? = null,
     val km_retorno: Int? = null,
-    val sincronizada: Boolean = false,
-    val completa: Boolean = true
+    var sincronizada: Boolean = false,
+    var completa: Boolean = true
 )
 class SaidaPreferences(private val context: Context) {
 
@@ -62,7 +62,7 @@ class SaidaPreferences(private val context: Context) {
     }
 
     // Remover uma saída por id
-    suspend fun removeSaida(id: Long) {
+    suspend fun removeSaida(id: Long?) {
         val current = saidasFlow.first().toMutableList()
         val changed = current.removeAll { it.id == id }
         if (changed) saveSaidas(current)

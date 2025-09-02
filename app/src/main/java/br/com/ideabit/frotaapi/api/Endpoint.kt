@@ -4,6 +4,7 @@ import br.com.ideabit.frotaapi.model.UserModel
 import br.com.ideabit.frotaapi.util.SaidaDTO
 import com.google.gson.JsonObject
 import retrofit2.Call
+import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.Header
 import retrofit2.http.POST
@@ -13,8 +14,8 @@ interface Endpoint {
     fun auth(@Body user : UserModel) : Call<JsonObject>
 
     @POST("frota/saida")
-    fun setSaida(
+    suspend fun setSaida(
         @Header("Authorization") token: String,
         @Body saida : SaidaDTO
-    ) : Call<JsonObject >
+    ) : Response<JsonObject >
 }

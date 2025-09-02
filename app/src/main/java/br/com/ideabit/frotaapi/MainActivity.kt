@@ -44,8 +44,12 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import br.com.ideabit.frotaapi.util.SaidaDTO
 import br.com.ideabit.frotaapi.util.SaidaPreferences
 import br.com.ideabit.frotaapi.util.UserPreferences
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     companion object {
@@ -58,9 +62,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         val saidaSync = object : saidaSync {
-            override fun start(saida: SaidaDTO) {
+            override suspend fun start(saida: SaidaDTO): Boolean {
                 getLogin()
-                setSaida(saida)
+                return setSaida(saida)
             }
         }
 
@@ -92,32 +96,31 @@ class MainActivity : ComponentActivity() {
                 }
 
                 override fun onFailure(call: Call<JsonObject>, t: Throwable) {
-                    println("Erro de rede: ${t.message}")
+                    println("Erro de rede ao fazer login: ${t.message}")
                 }
             })
     }
 
-    protected fun setSaida(saidaDTO: SaidaDTO) {
-        getEndPoint().setSaida("Bearer ${MainActivity.token}" ?: "", saidaDTO)
-            .enqueue(object : Callback<JsonObject> {
-                override fun onResponse(call: Call<JsonObject>, response: Response<JsonObject>) {
-                    if(response.isSuccessful) {
-                        println("Deu tudo certo")
-                    } else {
-                        println("Erro : ${response.code()}")
-                        println(response.message())
-                        println("Token: ${MainActivity.token}")
-                    }
-                }
-                override fun onFailure(call: Call<JsonObject>, t: Throwable) {
-                    println("Erro  de rede: ${t.message}")
-                }
-            })
+    protected suspend fun setSaida (saidaDTO: SaidaDTO) : Boolean {
+        return try {
+            val response = getEndPoint().setSaida("Bearer $token", saidaDTO)
+            if (response.isSuccessful) {
+                println("Deu tudo certo")
+                true
+            } else {
+                println("Erro : ${response.code()}")
+                println(response.message())
+                false
+            }
+        } catch (e: Exception) {
+            println("Erro de rede: ${e.message}")
+            false
+        }
     }
 }
 
 interface saidaSync {
-    fun start(saida: SaidaDTO)
+    suspend fun start(saida: SaidaDTO): Boolean
 }
 
 @SuppressLint("ContextCastToActivity")
@@ -195,10 +198,22 @@ fun TelaPrincipal(saidaSync: saidaSync) {
                             "Nenhuma saída pendente"
                     )
 
+                    CoroutineScope(Dispatchers.IO).launch {
+                        for (pendente in pendentes) {
+                            if (pendente.completa && !pendente.sincronizada) {
+                                println("Sincronizando...")
 
-                    for(pendente in pendentes) {
-                        if(pendente.completa) {
-                            saidaSync.start(pendente)
+                                val sucesso = saidaSync.start(pendente)
+
+                                if (sucesso) {
+                                    // Atualiza estado local da saída como sincronizada
+                                    pendente.sincronizada = true
+
+                                    saidaPrefs.removeSaida(pendente.id)
+                                }
+                            } else {
+                                println("Dados incompletos ou já sincronizados")
+                            }
                         }
                     }
                 },
@@ -361,8 +376,8 @@ fun ModalCadastrarSaida(
 fun GreetingPreview() {
     FrotaApiTheme {
         TelaPrincipal(object : saidaSync{
-            override fun start(saida: SaidaDTO) {
-
+            override suspend fun start(saida: SaidaDTO): Boolean {
+                return true
             }
         })
     }

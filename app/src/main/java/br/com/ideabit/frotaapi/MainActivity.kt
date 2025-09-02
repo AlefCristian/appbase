@@ -1,5 +1,6 @@
 package br.com.ideabit.frotaapi
 
+import android.annotation.SuppressLint
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -49,15 +50,23 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     companion object {
         var token: String? = ""
+
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        val saidaSync = object : saidaSync {
+            override fun start(saida: SaidaDTO) {
+                getLogin()
+                setSaida(saida)
+            }
+        }
+
         setContent {
             FrotaApiTheme {
-                TelaPrincipal()
+                TelaPrincipal(saidaSync)
             }
         }
     }
@@ -77,7 +86,6 @@ class MainActivity : ComponentActivity() {
                         val token = json?.get("token")?.asString
                         println(token)
                         MainActivity.token = token
-                        setSaida()
                     } else {
                         println("Erro: ${response.code()}")
                     }
@@ -89,8 +97,8 @@ class MainActivity : ComponentActivity() {
             })
     }
 
-    private fun setSaida() {
-        getEndPoint().setSaida("Bearer ${MainActivity.token}" ?: "", SaidaModel("Alef Santos", "10:15", 5000, "12:15", 5001))
+    protected fun setSaida(saidaDTO: SaidaDTO) {
+        getEndPoint().setSaida("Bearer ${MainActivity.token}" ?: "", saidaDTO)
             .enqueue(object : Callback<JsonObject> {
                 override fun onResponse(call: Call<JsonObject>, response: Response<JsonObject>) {
                     if(response.isSuccessful) {
@@ -107,8 +115,14 @@ class MainActivity : ComponentActivity() {
             })
     }
 }
+
+interface saidaSync {
+    fun start(saida: SaidaDTO)
+}
+
+@SuppressLint("ContextCastToActivity")
 @Composable
-fun TelaPrincipal() {
+fun TelaPrincipal(saidaSync: saidaSync) {
     val context = LocalContext.current
     val userPrefs = remember { UserPreferences(context.applicationContext) }
     val saidaPrefs = remember { SaidaPreferences(context.applicationContext) }
@@ -180,9 +194,17 @@ fun TelaPrincipal() {
                         else
                             "Nenhuma saída pendente"
                     )
-                    showLoginDialog = true
+
+
+                    for(pendente in pendentes) {
+                        if(pendente.completa) {
+                            saidaSync.start(pendente)
+                        }
+                    }
                 },
-                modifier = Modifier.fillMaxWidth().padding(16.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
             ) {
                 Text("Sincronizar")
             }
@@ -338,7 +360,11 @@ fun ModalCadastrarSaida(
 @Composable
 fun GreetingPreview() {
     FrotaApiTheme {
-        TelaPrincipal()
+        TelaPrincipal(object : saidaSync{
+            override fun start(saida: SaidaDTO) {
+
+            }
+        })
     }
 }
 

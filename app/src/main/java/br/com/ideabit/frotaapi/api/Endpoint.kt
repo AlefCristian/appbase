@@ -11,7 +11,7 @@ import retrofit2.http.POST
 
 interface Endpoint {
     @POST("login")
-    fun auth(@Body user : UserModel) : Call<JsonObject>
+    suspend fun auth(@Body user : UserModel) : Response<JsonObject>
 
     @POST("frota/saida")
     suspend fun setSaida(

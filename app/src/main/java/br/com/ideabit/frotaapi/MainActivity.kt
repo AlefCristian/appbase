@@ -52,20 +52,20 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
-    companion object {
-        var token: String? = ""
 
+    interface SaidaSync {
+        suspend fun start(saidas: List<SaidaDTO>, saidaPrefs: SaidaPreferences)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val saidaSync = object : saidaSync {
-            override suspend fun start(saida: SaidaDTO): Boolean {
-                getLogin()
-                return setSaida(saida)
+        val saidaSync = object : SaidaSync {
+            override suspend fun start(saidas: List<SaidaDTO>, saidaPrefs : SaidaPreferences) {
+                syncSaidas(saidas, saidaPrefs)
             }
+
         }
 
         setContent {
@@ -81,54 +81,56 @@ class MainActivity : ComponentActivity() {
         return endpoint
     }
 
-    private fun getLogin() {
-        getEndPoint().auth(UserModel("alef.santos", "example@email.com", "123456"))
-            .enqueue(object : Callback<JsonObject> {
-                override fun onResponse(call: Call<JsonObject>, response: Response<JsonObject>) {
-                    if(response.isSuccessful) {
-                        val json = response.body()
-                        val token = json?.get("token")?.asString
-                        println(token)
-                        MainActivity.token = token
-                        println("Token retornado do getLogin ${token}")
-                    } else {
-                        println("Erro: ${response.code()}")
-                    }
-                }
+    private suspend fun getLogin(): String {
+        val response = getEndPoint().auth(
+            UserModel("alef.santos", "example@email.com", "123456")
+        )
 
-                override fun onFailure(call: Call<JsonObject>, t: Throwable) {
-                    println("Erro de rede ao fazer login: ${t.message}")
-
-                }
-            })
-    }
-
-    protected suspend fun setSaida (saidaDTO: SaidaDTO) : Boolean {
-        return try {
-            val response = getEndPoint().setSaida("Bearer $token", saidaDTO)
-            if (response.isSuccessful) {
-                println("Deu tudo certo")
-                true
+        if (response.isSuccessful) {
+            val json = response.body()
+            val token = json?.get("token")?.asString
+            if (token != null) {
+                println("Token retornado do getLogin: $token")
+                return token
             } else {
-                println("Erro : ${response.code()}")
-                println(response.message())
-                println("token do erro: ${MainActivity.token}")
-                false
+                throw Exception("Token nulo na resposta")
             }
-        } catch (e: Exception) {
-            println("Erro de rede: ${e.message}")
-            false
+        } else {
+            val errorBody = response.errorBody()?.string()
+            throw Exception("Erro de login: ${response.code()} - $errorBody")
         }
     }
-}
 
-interface saidaSync {
-    suspend fun start(saida: SaidaDTO): Boolean
+    suspend fun syncSaidas(saidas: List<SaidaDTO>, saidaPrefs : SaidaPreferences) {
+        var rawBody : String? = "nada"
+        try {
+            val token = getLogin()
+            for (saida in saidas) {
+                if (saida.completa) {
+                    val res = getEndPoint().setSaida("Bearer $token", saida)
+                    rawBody = res.body()?.toString()
+                    println(rawBody)
+                    if (res.isSuccessful) {
+                        saida.sincronizada = true
+                        println("${saida.id} cadastrado com sucesso")
+                    } else {
+                        println("Erro ao cadastrar saida id ${saida.id}: ${res.code()} - ${res.errorBody()?.string()}")
+                    }
+                }
+            }
+            saidaPrefs.saveSaidas(saidas.filter { !it.sincronizada })
+
+        } catch (e: Exception) {
+            println("Falha na sincronização: ${e.message}")
+            println(rawBody)
+        }
+        saidaPrefs.removeSincronizados()
+    }
 }
 
 @SuppressLint("ContextCastToActivity")
 @Composable
-fun TelaPrincipal(saidaSync: saidaSync) {
+fun TelaPrincipal(saidaSync: MainActivity.SaidaSync) {
     val context = LocalContext.current
     val userPrefs = remember { UserPreferences(context.applicationContext) }
     val saidaPrefs = remember { SaidaPreferences(context.applicationContext) }
@@ -202,22 +204,7 @@ fun TelaPrincipal(saidaSync: saidaSync) {
                     )
 
                     CoroutineScope(Dispatchers.IO).launch {
-                        for (pendente in pendentes) {
-                            if (pendente.completa && !pendente.sincronizada) {
-                                println("Sincronizando...")
-
-                                val sucesso = saidaSync.start(pendente)
-
-                                if (sucesso) {
-                                    // Atualiza estado local da saída como sincronizada
-                                    pendente.sincronizada = true
-
-                                    saidaPrefs.removeSaida(pendente.id)
-                                }
-                            } else {
-                                println("Dados incompletos ou já sincronizados")
-                            }
-                        }
+                        saidaSync.start(pendentes, saidaPrefs)
                     }
                 },
                 modifier = Modifier
@@ -378,10 +365,11 @@ fun ModalCadastrarSaida(
 @Composable
 fun GreetingPreview() {
     FrotaApiTheme {
-        TelaPrincipal(object : saidaSync{
-            override suspend fun start(saida: SaidaDTO): Boolean {
-                return true
+        TelaPrincipal(object : MainActivity.SaidaSync{
+            override suspend fun start(saidas: List<SaidaDTO>, saidaPrefs: SaidaPreferences) {
+                TODO("Not yet implemented")
             }
+
         })
     }
 }

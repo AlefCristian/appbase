@@ -68,6 +68,13 @@ class SaidaPreferences(private val context: Context) {
         if (changed) saveSaidas(current)
     }
 
+    suspend fun removeSincronizados() {
+        val current = saidasFlow.first().toMutableList()
+        val restantes = current.filter { !it.sincronizada }
+        saveSaidas(restantes)
+    }
+
+
     // Limpar todas as saídas
     suspend fun clear() {
         context.saidaDataStore.edit { it.clear() }

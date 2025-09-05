@@ -7,6 +7,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
@@ -48,6 +49,7 @@ import br.com.ideabit.frotaapi.util.SaidaPreferences
 import br.com.ideabit.frotaapi.util.UserPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -119,6 +121,7 @@ class MainActivity : ComponentActivity() {
                         println("Erro ao cadastrar saida id ${saida.id}: ${res.code()} - ${res.errorBody()?.string()}")
                     }
                 }
+                delay(1000)
             }
             saidaPrefs.saveSaidas(saidas.filter { !it.sincronizada })
 
@@ -219,18 +222,53 @@ fun TelaPrincipal(saidaSync: MainActivity.SaidaSync) {
         }
     ) { innerPadding ->
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = innerPadding
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(saidas) { saida ->
-                Text("Motorista: ${saida.nome_motorista}")
-                Text("Horário saída: ${saida.horario_saida}")
-                Text("Km saída: ${saida.km_saida}")
-                Text("Retorno: ${saida.horario_retorno ?: "Não voltou"}")
-                Text("Km retorno: ${saida.km_retorno ?: "-"}")
-                Divider()
+            if (saidas.isEmpty()) {
+                item {
+                    Text(
+                        text = "Não há dados a serem sincronizados.",
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
+            } else {
+                items(saidas) { saida ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(IntrinsicSize.Min)
+                    ) {
+                        // Listra azul à esquerda
+                        Box(
+                            modifier = Modifier
+                                .width(6.dp)
+                                .fillMaxHeight()
+                                .padding(end = 8.dp)
+                                .background(color = androidx.compose.ui.graphics.Color(0xFF2196F3)) // azul
+                        )
+
+                        // Card com informações
+                        androidx.compose.material3.Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text("Motorista: ${saida.nome_motorista}")
+                                Text("Horário saída: ${saida.horario_saida}")
+                                Text("Km saída: ${saida.km_saida}")
+                                Text("Retorno: ${saida.horario_retorno ?: "Não voltou"}")
+                                Text("Km retorno: ${saida.km_retorno ?: "-"}")
+                            }
+                        }
+                    }
+                }
             }
         }
+
     }
 }
 @Composable

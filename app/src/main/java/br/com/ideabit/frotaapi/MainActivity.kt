@@ -1,7 +1,9 @@
 package br.com.ideabit.frotaapi
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -76,7 +78,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun getEndPoint() : Endpoint {
-        val retrofitClient = NetworkUtils.getRetrofitInstance("http://10.0.2.2:8080/api/")
+        val retrofitClient = NetworkUtils.getRetrofitInstance("http://192.168.15.8:8080/api/")
         val endpoint = retrofitClient.create(Endpoint::class.java)
         return endpoint
     }
@@ -162,7 +164,7 @@ fun TelaPrincipal(saidaSync: MainActivity.SaidaSync) {
                         println("Atualizando saida")
                         saidaPrefs.updateSaida(saida) // edição
                     } else {
-                        println("Cadasntro saida")
+                        println("Cadastrando saida")
                         saidaPrefs.addSaida(saida) // novo
                     }
                 }
@@ -196,12 +198,13 @@ fun TelaPrincipal(saidaSync: MainActivity.SaidaSync) {
             Button(
                 onClick = {
                     val pendentes = saidas.filter { !it.sincronizada }
-                    println(
+                    Toast.makeText(context,
                         if (pendentes.isNotEmpty())
                             "Sincronizando ${pendentes.size} saídas..."
                         else
-                            "Nenhuma saída pendente"
-                    )
+                            "Nenhuma saída pendente",
+                        Toast.LENGTH_SHORT
+                    ).show()
 
                     CoroutineScope(Dispatchers.IO).launch {
                         saidaSync.start(pendentes, saidaPrefs)

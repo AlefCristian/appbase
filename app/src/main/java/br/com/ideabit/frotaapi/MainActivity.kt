@@ -1,12 +1,18 @@
 package br.com.ideabit.frotaapi
 
+import TimeVisualTransformation
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Bitmap
+import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -44,9 +50,13 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import br.com.ideabit.frotaapi.util.AppPreferences
 import br.com.ideabit.frotaapi.util.SaidaDTO
 import br.com.ideabit.frotaapi.util.SaidaPreferences
 import br.com.ideabit.frotaapi.util.UserPreferences
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -72,19 +82,20 @@ class MainActivity : ComponentActivity() {
 
         }
 
+        // Inicializa o singleton
+        AppPreferences.init(this)
+
         setContent {
             FrotaApiTheme {
                 TelaPrincipal(saidaSync)
             }
         }
     }
-
     private fun getEndPoint() : Endpoint {
         val retrofitClient = NetworkUtils.getRetrofitInstance("http://192.168.15.8:8080/api/")
         val endpoint = retrofitClient.create(Endpoint::class.java)
         return endpoint
     }
-
     private suspend fun getLogin(): String {
         val response = getEndPoint().auth(
             UserModel("alef.santos", "example@email.com", "123456")
@@ -104,7 +115,6 @@ class MainActivity : ComponentActivity() {
             throw Exception("Erro de login: ${response.code()} - $errorBody")
         }
     }
-
     suspend fun syncSaidas(saidas: List<SaidaDTO>, saidaPrefs : SaidaPreferences) {
         var rawBody : String? = "nada"
         try {
@@ -137,7 +147,6 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun TelaPrincipal(saidaSync: MainActivity.SaidaSync) {
     val context = LocalContext.current
-    val userPrefs = remember { UserPreferences(context.applicationContext) }
     val saidaPrefs = remember { SaidaPreferences(context.applicationContext) }
 
     var usuario by remember { mutableStateOf("") }
@@ -147,8 +156,8 @@ fun TelaPrincipal(saidaSync: MainActivity.SaidaSync) {
     var showDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        usuario = userPrefs.userFlow.first()
-        senha = userPrefs.passwordFlow.first()
+        val usuario = AppPreferences.userPrefs.userFlow.first()
+        val senha = AppPreferences.userPrefs.passwordFlow.first()
         showLoginDialog = usuario.isEmpty() || senha.isEmpty()
     }
 
@@ -178,7 +187,7 @@ fun TelaPrincipal(saidaSync: MainActivity.SaidaSync) {
     }
 
     if (showLoginDialog) {
-        LoginDialog(onDismiss = { showLoginDialog = false }, userPrefs = userPrefs)
+        LoginDialog(onDismiss = { showLoginDialog = false })
     }
 
     Scaffold(
@@ -273,14 +282,13 @@ fun TelaPrincipal(saidaSync: MainActivity.SaidaSync) {
 }
 @Composable
 fun LoginDialog(
-    onDismiss: () -> Unit,
-    userPrefs: UserPreferences
+    onDismiss: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
 
     // Coletar os valores salvos do DataStore
-    val savedUser by userPrefs.userFlow.collectAsState(initial = "")
-    val savedPass by userPrefs.passwordFlow.collectAsState(initial = "")
+    val savedUser by AppPreferences.userPrefs.userFlow.collectAsState(initial = "")
+    val savedPass by AppPreferences.userPrefs.passwordFlow.collectAsState(initial = "")
 
     // Estados para edição
     var usuario by remember { mutableStateOf(savedUser) }
@@ -292,9 +300,9 @@ fun LoginDialog(
             Button(
                 onClick = {
                     scope.launch {
-                        userPrefs.saveCredentials(usuario, senha)
+                        AppPreferences.userPrefs.saveCredentials(usuario, senha)
                         // Debug
-                        val testeUser = userPrefs.userFlow.first()
+                        val testeUser = AppPreferences.userPrefs.userFlow.first()
                         println("Salvo: $testeUser")
                     }
                     onDismiss()
@@ -329,6 +337,22 @@ fun LoginDialog(
         }
     )
 }
+
+fun extractNumberFromBitmap(bitmap: Bitmap, onResult: (String) -> Unit) {
+    val image = InputImage.fromBitmap(bitmap, 0)
+    val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+
+    recognizer.process(image)
+        .addOnSuccessListener { visionText ->
+            // Procura o primeiro número encontrado
+            val text = visionText.text
+            val number = Regex("\\d+").find(text)?.value ?: ""
+            onResult(number)
+        }
+        .addOnFailureListener {
+            onResult("")
+        }
+}
 @Composable
 fun ModalCadastrarSaida(
     saidaExistente: SaidaDTO? = null,
@@ -340,6 +364,18 @@ fun ModalCadastrarSaida(
     var odometroSaida by remember { mutableStateOf(saidaExistente?.km_saida?.toString() ?: "") }
     var horarioRetorno by remember { mutableStateOf(saidaExistente?.horario_retorno ?: "") }
     var odometroRetorno by remember { mutableStateOf(saidaExistente?.km_retorno?.toString() ?: "") }
+
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicturePreview()
+    ) { bitmap: Bitmap? ->
+        bitmap?.let {
+            extractNumberFromBitmap(it) { numero ->
+                if (numero.isNotBlank()) {
+                    odometroSaida = numero
+                }
+            }
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -377,8 +413,13 @@ fun ModalCadastrarSaida(
                 )
                 OutlinedTextField(
                     value = horarioSaida,
-                    onValueChange = { horarioSaida = it },
-                    label = { Text("Horário de Saída") }
+                    onValueChange = {
+                        // permite apenas dígitos
+                        horarioSaida = it.filter { char -> char.isDigit() }.take(4)
+                    },
+                    label = { Text("Horário de Saída") },
+                    keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
+                    visualTransformation = TimeVisualTransformation()
                 )
                 OutlinedTextField(
                     value = odometroSaida,
@@ -388,8 +429,13 @@ fun ModalCadastrarSaida(
                 )
                 OutlinedTextField(
                     value = horarioRetorno,
-                    onValueChange = { horarioRetorno = it },
-                    label = { Text("Horário de Retorno") }
+                    onValueChange = {
+                        // permite apenas dígitos
+                        horarioRetorno = it.filter { char -> char.isDigit() }.take(4)
+                    },
+                    label = { Text("Horário de Retorno") },
+                    keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
+                    visualTransformation = TimeVisualTransformation()
                 )
                 OutlinedTextField(
                     value = odometroRetorno,
@@ -397,6 +443,13 @@ fun ModalCadastrarSaida(
                     label = { Text("Odômetro Retorno") },
                     keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number)
                 )
+
+//                Spacer(modifier = Modifier.height(16.dp))
+//
+//                // Botão para tirar foto do odômetro
+//                Button(onClick = { launcher.launch() }) {
+//                    Text("Tirar foto do odômetro")
+//                }
             }
         }
     )
@@ -410,7 +463,6 @@ fun GreetingPreview() {
             override suspend fun start(saidas: List<SaidaDTO>, saidaPrefs: SaidaPreferences) {
                 TODO("Not yet implemented")
             }
-
         })
     }
 }

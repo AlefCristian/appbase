@@ -79,9 +79,7 @@ class MainActivity : ComponentActivity() {
             override suspend fun start(saidas: List<SaidaDTO>, saidaPrefs : SaidaPreferences) {
                 syncSaidas(saidas, saidaPrefs)
             }
-
         }
-
         // Inicializa o singleton
         AppPreferences.init(this)
 
@@ -97,8 +95,11 @@ class MainActivity : ComponentActivity() {
         return endpoint
     }
     private suspend fun getLogin(): String {
+        val usuario = AppPreferences.userPrefs.userFlow.first()
+        val senha = AppPreferences.userPrefs.passwordFlow.first()
+
         val response = getEndPoint().auth(
-            UserModel("alef.santos", "example@email.com", "123456")
+            UserModel(usuario, "example@email.com", senha)
         )
 
         if (response.isSuccessful) {
@@ -337,7 +338,6 @@ fun LoginDialog(
         }
     )
 }
-
 fun extractNumberFromBitmap(bitmap: Bitmap, onResult: (String) -> Unit) {
     val image = InputImage.fromBitmap(bitmap, 0)
     val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)

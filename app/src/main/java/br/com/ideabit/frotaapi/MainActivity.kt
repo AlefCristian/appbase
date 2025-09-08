@@ -149,9 +149,6 @@ fun TelaPrincipal(saidaSync: MainActivity.SaidaSync) {
     val context = LocalContext.current
     val saidaPrefs = remember { SaidaPreferences(context.applicationContext) }
 
-    var usuario by remember { mutableStateOf("") }
-    var senha by remember { mutableStateOf("") }
-
     var showLoginDialog by remember { mutableStateOf(false) }
     var showDialog by remember { mutableStateOf(false) }
 

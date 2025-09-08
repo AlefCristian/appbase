@@ -66,7 +66,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
-
     interface SaidaSync {
         suspend fun start(saidas: List<SaidaDTO>, saidaPrefs: SaidaPreferences)
     }

@@ -133,6 +133,7 @@ class MainActivity : ComponentActivity() {
                 }
                 delay(1000)
             }
+
             saidaPrefs.saveSaidas(saidas.filter { !it.sincronizada })
 
         } catch (e: Exception) {
@@ -282,7 +283,6 @@ fun LoginDialog(
     onDismiss: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
-
     // Coletar os valores salvos do DataStore
     val savedUser by AppPreferences.userPrefs.userFlow.collectAsState(initial = "")
     val savedPass by AppPreferences.userPrefs.passwordFlow.collectAsState(initial = "")

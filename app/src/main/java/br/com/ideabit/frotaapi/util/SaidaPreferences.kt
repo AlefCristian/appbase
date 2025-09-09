@@ -12,6 +12,7 @@ private val Context.saidaDataStore by preferencesDataStore(name = "saida_prefs")
 data class SaidaDTO(
     var id: Long? = null,
     val nome_motorista: String,
+    val data_saida: String? = null,
     val horario_saida: String,
     val km_saida: Int,
     val horario_retorno: String? = null,

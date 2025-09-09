@@ -152,6 +152,8 @@ fun TelaPrincipal(saidaSync: MainActivity.SaidaSync) {
 
     var showLoginDialog by remember { mutableStateOf(false) }
     var showDialog by remember { mutableStateOf(false) }
+    var showSaidaDialog by remember { mutableStateOf(false) }
+    var showRetornoDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         val usuario = AppPreferences.userPrefs.userFlow.first()
@@ -184,6 +186,46 @@ fun TelaPrincipal(saidaSync: MainActivity.SaidaSync) {
         )
     }
 
+    if (showSaidaDialog) {
+        ModalSaida(
+            saidaExistente = saidaSelecionada,
+            onDismiss = { showSaidaDialog = false },
+            onConfirm = { saida ->
+                scope.launch {
+                    if (saida.id != null) {
+                        println("Atualizando saida")
+                        //saidaPrefs.updateSaida(saida) // edição
+                    } else {
+                        println("Cadastrando saida")
+                        saidaPrefs.addSaida(saida) // novo
+                    }
+                }
+                showSaidaDialog = false
+                saidaSelecionada = null
+            }
+        )
+    }
+
+    if (showRetornoDialog) {
+        ModalRetorno (
+            saidaExistente = saidaSelecionada,
+            onDismiss = { showRetornoDialog = false },
+            onConfirm = { saida ->
+                scope.launch {
+                    if (saida.id != null) {
+                        println("Atualizando saida")
+                        saidaPrefs.updateSaida(saida) // edição
+                    } else {
+                        println("Cadastrando saida")
+                        //saidaPrefs.addSaida(saida) // novo
+                    }
+                }
+                showRetornoDialog = false
+                saidaSelecionada = null
+            }
+        )
+    }
+
     if (showLoginDialog) {
         LoginDialog(onDismiss = { showLoginDialog = false })
     }
@@ -195,11 +237,13 @@ fun TelaPrincipal(saidaSync: MainActivity.SaidaSync) {
                 if (incompleta != null) {
                     println("Editar saída de ${incompleta.nome_motorista}")
                     saidaSelecionada = incompleta
+                    showRetornoDialog = true
                 } else {
                     println("Criar nova saída")
                     saidaSelecionada = null
+                    showSaidaDialog = true
                 }
-                showDialog = true
+                //showDialog = true
             }) {
                 Icon(Icons.Filled.Add, contentDescription = "Adicionar ou Editar Saída")
             }
@@ -437,6 +481,162 @@ fun ModalCadastrarSaida(
                     value = odometroRetorno,
                     onValueChange = { odometroRetorno = it },
                     label = { Text("Odômetro Retorno") },
+                    keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number)
+                )
+
+//                Spacer(modifier = Modifier.height(16.dp))
+//
+//                // Botão para tirar foto do odômetro
+//                Button(onClick = { launcher.launch() }) {
+//                    Text("Tirar foto do odômetro")
+//                }
+            }
+        }
+    )
+}
+@Composable
+fun ModalSaida(
+    saidaExistente: SaidaDTO? = null,
+    onDismiss: () -> Unit,
+    onConfirm: (SaidaDTO) -> Unit
+) {
+    var nome by remember { mutableStateOf(saidaExistente?.nome_motorista ?: "") }
+    var data by remember { mutableStateOf(saidaExistente?.data_saida ?: "") }
+    var horarioSaida by remember { mutableStateOf(saidaExistente?.horario_saida ?: "") }
+    var odometroSaida by remember { mutableStateOf(saidaExistente?.km_saida?.toString() ?: "") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            Button(onClick = {
+                val saida = SaidaDTO(
+                    id = saidaExistente?.id, // mantém o id null
+                    nome_motorista = nome,
+                    data_saida = data,
+                    horario_saida = horarioSaida,
+                    km_saida = odometroSaida.toIntOrNull() ?: 0,
+                    sincronizada = false,
+                    completa = false
+                )
+                onConfirm(saida)
+                onDismiss()
+            }) {
+                Text("Salvar")
+            }
+        },
+        dismissButton = {
+            Button(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        },
+        title = { Text(if (saidaExistente != null) "Editar Saída" else "Nova Saída") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = nome,
+                    onValueChange = { nome = it },
+                    label = { Text("Nome do Motorista") }
+                )
+                OutlinedTextField(
+                    value = data,
+                    onValueChange = { data = it },
+                    label = { Text("Data") }
+                )
+                OutlinedTextField(
+                    value = horarioSaida,
+                    onValueChange = {
+                        // permite apenas dígitos
+                        horarioSaida = it.filter { char -> char.isDigit() }.take(4)
+                    },
+                    label = { Text("Horário de Saída") },
+                    keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
+                    visualTransformation = TimeVisualTransformation()
+                )
+                OutlinedTextField(
+                    value = odometroSaida,
+                    onValueChange = { odometroSaida = it },
+                    label = { Text("Odômetro Saída") },
+                    keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number)
+                )
+
+//                Spacer(modifier = Modifier.height(16.dp))
+//
+//                // Botão para tirar foto do odômetro
+//                Button(onClick = { launcher.launch() }) {
+//                    Text("Tirar foto do odômetro")
+//                }
+            }
+        }
+    )
+}
+
+@Composable
+fun ModalRetorno(
+    saidaExistente: SaidaDTO? = null,
+    onDismiss: () -> Unit,
+    onConfirm: (SaidaDTO) -> Unit
+) {
+    var horarioRetorno by remember { mutableStateOf(saidaExistente?.horario_retorno?.toString() ?: "") }
+    var odometroRetorno by remember { mutableStateOf(saidaExistente?.km_retorno?.toString() ?: "") }
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicturePreview()
+    ) { bitmap: Bitmap? ->
+        bitmap?.let {
+            extractNumberFromBitmap(it) { numero ->
+                if (numero.isNotBlank()) {
+//                    odometroSaida = numero
+                }
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            Button(onClick = {
+                val saida: SaidaDTO? = saidaExistente?.let {
+                    SaidaDTO(
+                        id = it.id, // mantém o id null
+                        nome_motorista =it.nome_motorista,
+                        data_saida = it.data_saida.toString(),
+                        horario_saida = it.horario_saida,
+                        km_saida = it.km_saida,
+                        horario_retorno = horarioRetorno,
+                        km_retorno = odometroRetorno.toIntOrNull(),
+                        sincronizada = false,
+                        completa = false
+                    )
+                }
+                if (saida != null) {
+                    onConfirm(saida)
+                }
+                onDismiss()
+            }) {
+                Text("Salvar")
+            }
+        },
+        dismissButton = {
+            Button(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        },
+        title = { Text(if (saidaExistente != null) "Editar Saída" else "Nova Saída") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = horarioRetorno,
+                    onValueChange = {
+                        // permite apenas dígitos
+                        horarioRetorno = it.filter { char -> char.isDigit() }.take(4)
+                    },
+                    label = { Text("Horário de Saída") },
+                    keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
+                    visualTransformation = TimeVisualTransformation()
+                )
+                OutlinedTextField(
+                    value = odometroRetorno,
+                    onValueChange = { odometroRetorno = it },
+                    label = { Text("Odômetro Saída") },
                     keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number)
                 )
 

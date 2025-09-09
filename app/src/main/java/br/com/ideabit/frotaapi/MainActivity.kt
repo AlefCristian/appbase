@@ -1,10 +1,8 @@
 package br.com.ideabit.frotaapi
 
-import TimeVisualTransformation
+import br.com.ideabit.frotaapi.util.TimeVisualTransformation
 import android.annotation.SuppressLint
-import android.content.Context
 import android.graphics.Bitmap
-import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -12,7 +10,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.result.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -22,14 +19,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import br.com.ideabit.frotaapi.api.Endpoint
-import br.com.ideabit.frotaapi.model.SaidaModel
 import br.com.ideabit.frotaapi.model.UserModel
 import br.com.ideabit.frotaapi.ui.theme.FrotaApiTheme
 import br.com.ideabit.frotaapi.util.NetworkUtils
-import com.google.gson.JsonObject
-import retrofit2.Call
-import retrofit2.Callback
-import retrofit2.Response
 
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -40,7 +32,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Divider
 import androidx.compose.runtime.*
 import androidx.compose.ui.unit.dp
 
@@ -53,7 +44,6 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import br.com.ideabit.frotaapi.util.AppPreferences
 import br.com.ideabit.frotaapi.util.SaidaDTO
 import br.com.ideabit.frotaapi.util.SaidaPreferences
-import br.com.ideabit.frotaapi.util.UserPreferences
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
@@ -62,8 +52,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     interface SaidaSync {
@@ -89,7 +80,7 @@ class MainActivity : ComponentActivity() {
         }
     }
     private fun getEndPoint() : Endpoint {
-        val retrofitClient = NetworkUtils.getRetrofitInstance("http://192.168.15.8:8080/api/")
+        val retrofitClient = NetworkUtils.getRetrofitInstance("http://172.16.1.75:8080/api/")
         val endpoint = retrofitClient.create(Endpoint::class.java)
         return endpoint
     }
@@ -108,6 +99,7 @@ class MainActivity : ComponentActivity() {
                 println("Token retornado do getLogin: $token")
                 return token
             } else {
+                Toast.makeText(this.applicationContext, "Erro ao realizar login", Toast.LENGTH_SHORT).show()
                 throw Exception("Token nulo na resposta")
             }
         } else {
@@ -143,7 +135,6 @@ class MainActivity : ComponentActivity() {
         saidaPrefs.removeSincronizados()
     }
 }
-
 @SuppressLint("ContextCastToActivity")
 @Composable
 fun TelaPrincipal(saidaSync: MainActivity.SaidaSync) {
@@ -319,7 +310,6 @@ fun TelaPrincipal(saidaSync: MainActivity.SaidaSync) {
                 }
             }
         }
-
     }
 }
 @Composable
@@ -505,6 +495,12 @@ fun ModalSaida(
     var horarioSaida by remember { mutableStateOf(saidaExistente?.horario_saida ?: "") }
     var odometroSaida by remember { mutableStateOf(saidaExistente?.km_saida?.toString() ?: "") }
 
+    val date = Date()
+    val formatterDay = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
+    val formatterHours = SimpleDateFormat("HHmm", Locale.getDefault())
+    data =  formatterDay.format(date)
+    horarioSaida = formatterHours.format(date)
+
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
@@ -529,7 +525,7 @@ fun ModalSaida(
                 Text("Cancelar")
             }
         },
-        title = { Text(if (saidaExistente != null) "Editar Saída" else "Nova Saída") },
+        title = { Text("Nova Saída") },
         text = {
             Column {
                 OutlinedTextField(
@@ -604,7 +600,7 @@ fun ModalRetorno(
                         horario_retorno = horarioRetorno,
                         km_retorno = odometroRetorno.toIntOrNull(),
                         sincronizada = false,
-                        completa = false
+                        completa = true
                     )
                 }
                 if (saida != null) {
@@ -620,7 +616,7 @@ fun ModalRetorno(
                 Text("Cancelar")
             }
         },
-        title = { Text(if (saidaExistente != null) "Editar Saída" else "Nova Saída") },
+        title = { Text("Marcar Retorno") },
         text = {
             Column {
                 OutlinedTextField(

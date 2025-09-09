@@ -1,3 +1,5 @@
+package br.com.ideabit.frotaapi.util
+
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.OffsetMapping
@@ -5,27 +7,34 @@ import androidx.compose.ui.text.input.TransformedText
 
 class TimeVisualTransformation : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText {
-        // Limita o tamanho a 4 dígitos (HHMM)
-        val trimmed = if (text.text.length >= 4) text.text.take(4) else text.text
+        val trimmed = text.text.take(4)
 
         val formatted = buildString {
             for (i in trimmed.indices) {
                 append(trimmed[i])
-                if (i == 1) append(":") // coloca ':' entre HH e MM
+                if (i == 1 && trimmed.length > 2) append(':') // só coloca ":" se houver mais de 2 dígitos
             }
         }
 
-        // Offset mapping para permitir edição correta
         val offsetMapping = object : OffsetMapping {
             override fun originalToTransformed(offset: Int): Int {
-                return if (offset <= 1) offset else offset + 1
+                return when {
+                    offset <= 1 -> offset
+                    offset in 2..4 -> offset + 1 // +1 por causa do ':'
+                    else -> formatted.length
+                }
             }
 
             override fun transformedToOriginal(offset: Int): Int {
-                return if (offset <= 2) offset else offset - 1
+                return when {
+                    offset <= 2 -> offset
+                    offset in 3..5 -> offset - 1
+                    else -> trimmed.length
+                }
             }
         }
 
         return TransformedText(AnnotatedString(formatted), offsetMapping)
     }
 }
+

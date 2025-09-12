@@ -2,14 +2,11 @@ package br.com.ideabit.frotaapi
 
 import br.com.ideabit.frotaapi.util.TimeVisualTransformation
 import android.annotation.SuppressLint
-import android.graphics.Bitmap
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -22,7 +19,6 @@ import br.com.ideabit.frotaapi.api.Endpoint
 import br.com.ideabit.frotaapi.model.UserModel
 import br.com.ideabit.frotaapi.ui.theme.FrotaApiTheme
 import br.com.ideabit.frotaapi.util.NetworkUtils
-
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Button
@@ -34,7 +30,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.*
 import androidx.compose.ui.unit.dp
-
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -44,9 +39,6 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import br.com.ideabit.frotaapi.util.AppPreferences
 import br.com.ideabit.frotaapi.util.SaidaDTO
 import br.com.ideabit.frotaapi.util.SaidaPreferences
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -302,8 +294,8 @@ fun TelaPrincipal(saidaSync: MainActivity.SaidaSync) {
                                 Text("Motorista: ${saida.nome_motorista}")
                                 Text("Horário saída: ${saida.horario_saida}")
                                 Text("Km saída: ${saida.km_saida}")
-                                Text("Retorno: ${saida.horario_retorno ?: "Não voltou"}")
-                                Text("Km retorno: ${saida.km_retorno ?: "-"}")
+                                Text("Retorno: ${saida.horario_retorno}")
+                                Text("Km retorno: ${saida.km_retorno}")
                             }
                         }
                     }
@@ -368,21 +360,6 @@ fun LoginDialog(
         }
     )
 }
-fun extractNumberFromBitmap(bitmap: Bitmap, onResult: (String) -> Unit) {
-    val image = InputImage.fromBitmap(bitmap, 0)
-    val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-
-    recognizer.process(image)
-        .addOnSuccessListener { visionText ->
-            // Procura o primeiro número encontrado
-            val text = visionText.text
-            val number = Regex("\\d+").find(text)?.value ?: ""
-            onResult(number)
-        }
-        .addOnFailureListener {
-            onResult("")
-        }
-}
 @Composable
 fun ModalCadastrarSaida(
     saidaExistente: SaidaDTO? = null,
@@ -394,18 +371,6 @@ fun ModalCadastrarSaida(
     var odometroSaida by remember { mutableStateOf(saidaExistente?.km_saida?.toString() ?: "") }
     var horarioRetorno by remember { mutableStateOf(saidaExistente?.horario_retorno ?: "") }
     var odometroRetorno by remember { mutableStateOf(saidaExistente?.km_retorno?.toString() ?: "") }
-
-    val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicturePreview()
-    ) { bitmap: Bitmap? ->
-        bitmap?.let {
-            extractNumberFromBitmap(it) { numero ->
-                if (numero.isNotBlank()) {
-                    odometroSaida = numero
-                }
-            }
-        }
-    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -484,6 +449,7 @@ fun ModalCadastrarSaida(
         }
     )
 }
+
 @Composable
 fun ModalSaida(
     saidaExistente: SaidaDTO? = null,
@@ -491,25 +457,45 @@ fun ModalSaida(
     onConfirm: (SaidaDTO) -> Unit
 ) {
     var nome by remember { mutableStateOf(saidaExistente?.nome_motorista ?: "") }
-    var data by remember { mutableStateOf(saidaExistente?.data_saida ?: "") }
-    var horarioSaida by remember { mutableStateOf(saidaExistente?.horario_saida ?: "") }
+
+    // data e hora armazenados SEM máscara: só números
+    var data by remember { mutableStateOf("") }
+    var horarioSaida by remember { mutableStateOf("") }
     var odometroSaida by remember { mutableStateOf(saidaExistente?.km_saida?.toString() ?: "") }
 
-    val date = Date()
-    val formatterDay = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
-    val formatterHours = SimpleDateFormat("HHmm", Locale.getDefault())
-    data =  formatterDay.format(date)
-    horarioSaida = formatterHours.format(date)
+    val formatterDay = remember { SimpleDateFormat("ddMMyyyy", Locale.getDefault()) }
+    val formatterHours = remember { SimpleDateFormat("HHmm", Locale.getDefault()) }
+
+    LaunchedEffect(Unit) {
+        if (saidaExistente == null) {
+            val now = Date()
+            data = formatterDay.format(now)      // exemplo: "12092025"
+            horarioSaida = formatterHours.format(now)  // exemplo: "1445"
+        } else {
+            // já existente, preencher com valor limpo (sem máscara)
+            data = saidaExistente.data_saida?.filter { it.isDigit() } ?: ""
+            horarioSaida = saidaExistente.horario_saida?.filter { it.isDigit() } ?: ""
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
             Button(onClick = {
+                // Salvar no formato com máscara, montando a string final com os caracteres
+                val dataFormatada = if (data.length == 8)
+                    "${data.substring(0, 2)}-${data.substring(2, 4)}-${data.substring(4, 8)}"
+                else data
+
+                val horaFormatada = if (horarioSaida.length == 4)
+                    "${horarioSaida.substring(0, 2)}:${horarioSaida.substring(2, 4)}"
+                else horarioSaida
+
                 val saida = SaidaDTO(
-                    id = saidaExistente?.id, // mantém o id null
+                    id = saidaExistente?.id,
                     nome_motorista = nome,
-                    data_saida = data,
-                    horario_saida = horarioSaida,
+                    data_saida = dataFormatada,
+                    horario_saida = horaFormatada,
                     km_saida = odometroSaida.toIntOrNull() ?: 0,
                     sincronizada = false,
                     completa = false
@@ -533,34 +519,33 @@ fun ModalSaida(
                     onValueChange = { nome = it },
                     label = { Text("Nome do Motorista") }
                 )
+
                 OutlinedTextField(
                     value = data,
-                    onValueChange = { data = it },
-                    label = { Text("Data") }
+                    onValueChange = { new ->
+                        data = new.filter { it.isDigit() }.take(8)
+                    },
+                    label = { Text("Data") },
+                    keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
+                    visualTransformation = VisualTransformationUtil.dataMask()
                 )
+
                 OutlinedTextField(
                     value = horarioSaida,
-                    onValueChange = {
-                        // permite apenas dígitos
-                        horarioSaida = it.filter { char -> char.isDigit() }.take(4)
+                    onValueChange = { new ->
+                        horarioSaida = new.filter { it.isDigit() }.take(4)
                     },
                     label = { Text("Horário de Saída") },
                     keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
-                    visualTransformation = TimeVisualTransformation()
+                    visualTransformation = VisualTransformationUtil.horaMask()
                 )
+
                 OutlinedTextField(
                     value = odometroSaida,
                     onValueChange = { odometroSaida = it },
                     label = { Text("Odômetro Saída") },
                     keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number)
                 )
-
-//                Spacer(modifier = Modifier.height(16.dp))
-//
-//                // Botão para tirar foto do odômetro
-//                Button(onClick = { launcher.launch() }) {
-//                    Text("Tirar foto do odômetro")
-//                }
             }
         }
     )
@@ -572,17 +557,20 @@ fun ModalRetorno(
     onDismiss: () -> Unit,
     onConfirm: (SaidaDTO) -> Unit
 ) {
-    var horarioRetorno by remember { mutableStateOf(saidaExistente?.horario_retorno?.toString() ?: "") }
+    var horarioRetorno by remember { mutableStateOf("") }
     var odometroRetorno by remember { mutableStateOf(saidaExistente?.km_retorno?.toString() ?: "") }
-    val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicturePreview()
-    ) { bitmap: Bitmap? ->
-        bitmap?.let {
-            extractNumberFromBitmap(it) { numero ->
-                if (numero.isNotBlank()) {
-//                    odometroSaida = numero
-                }
-            }
+
+    // Formatador para hora atual
+    val formatterHours = remember { SimpleDateFormat("HHmm", Locale.getDefault()) }
+
+    // Preenche hora automaticamente se for nulo
+    LaunchedEffect(Unit) {
+        if (saidaExistente?.horario_retorno.isNullOrEmpty()) {
+            val now = Date()
+            horarioRetorno = formatterHours.format(now) // Ex: "1445"
+        } else {
+            // Remove ":" se vier formatado
+            horarioRetorno = saidaExistente?.horario_retorno?.filter { it.isDigit() } ?: ""
         }
     }
 
@@ -590,19 +578,17 @@ fun ModalRetorno(
         onDismissRequest = onDismiss,
         confirmButton = {
             Button(onClick = {
-                val saida: SaidaDTO? = saidaExistente?.let {
-                    SaidaDTO(
-                        id = it.id, // mantém o id null
-                        nome_motorista =it.nome_motorista,
-                        data_saida = it.data_saida.toString(),
-                        horario_saida = it.horario_saida,
-                        km_saida = it.km_saida,
-                        horario_retorno = horarioRetorno,
-                        km_retorno = odometroRetorno.toIntOrNull(),
-                        sincronizada = false,
-                        completa = true
-                    )
-                }
+                val horaFormatada = if (horarioRetorno.length == 4)
+                    "${horarioRetorno.substring(0, 2)}:${horarioRetorno.substring(2)}"
+                else horarioRetorno
+
+                val saida = saidaExistente?.copy(
+                    horario_retorno = horaFormatada,
+                    km_retorno = odometroRetorno.toIntOrNull(),
+                    sincronizada = false,
+                    completa = true
+                )
+
                 if (saida != null) {
                     onConfirm(saida)
                 }
@@ -621,27 +607,20 @@ fun ModalRetorno(
             Column {
                 OutlinedTextField(
                     value = horarioRetorno,
-                    onValueChange = {
-                        // permite apenas dígitos
-                        horarioRetorno = it.filter { char -> char.isDigit() }.take(4)
+                    onValueChange = { input ->
+                        // Aceita apenas dígitos, limita a 4
+                        horarioRetorno = input.filter { it.isDigit() }.take(4)
                     },
-                    label = { Text("Horário de Saída") },
+                    label = { Text("Horário de Retorno") },
                     keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
-                    visualTransformation = TimeVisualTransformation()
+                    visualTransformation = VisualTransformationUtil.horaMask()
                 )
                 OutlinedTextField(
                     value = odometroRetorno,
                     onValueChange = { odometroRetorno = it },
-                    label = { Text("Odômetro Saída") },
+                    label = { Text("Odômetro Retorno") },
                     keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number)
                 )
-
-//                Spacer(modifier = Modifier.height(16.dp))
-//
-//                // Botão para tirar foto do odômetro
-//                Button(onClick = { launcher.launch() }) {
-//                    Text("Tirar foto do odômetro")
-//                }
             }
         }
     )

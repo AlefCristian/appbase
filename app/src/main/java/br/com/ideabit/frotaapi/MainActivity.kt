@@ -49,6 +49,7 @@ import java.util.Date
 import java.util.Locale
 
 class MainActivity : ComponentActivity() {
+    private var showLoginDialog = mutableStateOf(false)
     interface SaidaSync {
         suspend fun start(saidas: List<SaidaDTO>, saidaPrefs: SaidaPreferences)
     }
@@ -67,7 +68,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             FrotaApiTheme {
-                TelaPrincipal(saidaSync)
+                TelaPrincipal(saidaSync, showLoginDialog)
             }
         }
     }
@@ -96,6 +97,12 @@ class MainActivity : ComponentActivity() {
             }
         } else {
             val errorBody = response.errorBody()?.string()
+            println("Erro de Login")
+            if(response.code() == 401) {
+                runOnUiThread {
+                    showLoginDialog.value = true
+                }
+            }
             throw Exception("Erro de login: ${response.code()} - $errorBody")
         }
     }
@@ -129,11 +136,11 @@ class MainActivity : ComponentActivity() {
 }
 @SuppressLint("ContextCastToActivity")
 @Composable
-fun TelaPrincipal(saidaSync: MainActivity.SaidaSync) {
+fun TelaPrincipal(saidaSync: MainActivity.SaidaSync,  showLoginDialog: MutableState<Boolean>) {
     val context = LocalContext.current
     val saidaPrefs = remember { SaidaPreferences(context.applicationContext) }
 
-    var showLoginDialog by remember { mutableStateOf(false) }
+//    var showLoginDialog by remember { mutableStateOf(false) }
     var showDialog by remember { mutableStateOf(false) }
     var showSaidaDialog by remember { mutableStateOf(false) }
     var showRetornoDialog by remember { mutableStateOf(false) }
@@ -141,7 +148,7 @@ fun TelaPrincipal(saidaSync: MainActivity.SaidaSync) {
     LaunchedEffect(Unit) {
         val usuario = AppPreferences.userPrefs.userFlow.first()
         val senha = AppPreferences.userPrefs.passwordFlow.first()
-        showLoginDialog = usuario.isEmpty() || senha.isEmpty()
+        showLoginDialog.value = usuario.isEmpty() || senha.isEmpty()
     }
 
     val saidas by saidaPrefs.saidasFlow.collectAsState(initial = emptyList())
@@ -209,8 +216,8 @@ fun TelaPrincipal(saidaSync: MainActivity.SaidaSync) {
         )
     }
 
-    if (showLoginDialog) {
-        LoginDialog(onDismiss = { showLoginDialog = false })
+    if (showLoginDialog.value) {
+        LoginDialog(onDismiss = { showLoginDialog.value = false })
     }
 
     Scaffold(
@@ -367,6 +374,7 @@ fun ModalCadastrarSaida(
     onConfirm: (SaidaDTO) -> Unit
 ) {
     var nome by remember { mutableStateOf(saidaExistente?.nome_motorista ?: "") }
+    var destino by remember { mutableStateOf(saidaExistente?.destino ?: "") }
     var horarioSaida by remember { mutableStateOf(saidaExistente?.horario_saida ?: "") }
     var odometroSaida by remember { mutableStateOf(saidaExistente?.km_saida?.toString() ?: "") }
     var horarioRetorno by remember { mutableStateOf(saidaExistente?.horario_retorno ?: "") }
@@ -380,6 +388,7 @@ fun ModalCadastrarSaida(
                 val saida = SaidaDTO(
                     id = saidaExistente?.id, // mantém o id null
                     nome_motorista = nome,
+                    destino = destino,
                     horario_saida = horarioSaida,
                     km_saida = odometroSaida.toIntOrNull() ?: 0,
                     horario_retorno = horarioRetorno.ifBlank { null },
@@ -457,6 +466,7 @@ fun ModalSaida(
     onConfirm: (SaidaDTO) -> Unit
 ) {
     var nome by remember { mutableStateOf(saidaExistente?.nome_motorista ?: "") }
+    var destino by remember { mutableStateOf(saidaExistente?.destino ?: "") }
 
     // data e hora armazenados SEM máscara: só números
     var data by remember { mutableStateOf("") }
@@ -494,6 +504,7 @@ fun ModalSaida(
                 val saida = SaidaDTO(
                     id = saidaExistente?.id,
                     nome_motorista = nome,
+                    destino = destino,
                     data_saida = dataFormatada,
                     horario_saida = horaFormatada,
                     km_saida = odometroSaida.toIntOrNull() ?: 0,
@@ -518,6 +529,12 @@ fun ModalSaida(
                     value = nome,
                     onValueChange = { nome = it },
                     label = { Text("Nome do Motorista") }
+                )
+
+                OutlinedTextField(
+                    value = destino,
+                    onValueChange = { destino = it },
+                    label = { Text("Destino da viagem") }
                 )
 
                 OutlinedTextField(
@@ -634,7 +651,7 @@ fun GreetingPreview() {
             override suspend fun start(saidas: List<SaidaDTO>, saidaPrefs: SaidaPreferences) {
                 TODO("Not yet implemented")
             }
-        })
+        }, showLoginDialog = mutableStateOf(false))
     }
 }
 

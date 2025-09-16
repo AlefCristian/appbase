@@ -31,8 +31,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -289,11 +291,11 @@ fun TelaPrincipal(saidaSync: MainActivity.SaidaSync,  showLoginDialog: MutableSt
                                 .width(6.dp)
                                 .fillMaxHeight()
                                 .padding(end = 8.dp)
-                                .background(color = androidx.compose.ui.graphics.Color(0xFF2196F3)) // azul
+                                .background(color = Color(0xFF2196F3)) // azul
                         )
 
                         // Card com informações
-                        androidx.compose.material3.Card(
+                        Card(
                             modifier = Modifier
                                 .fillMaxWidth()
                         ) {
@@ -647,11 +649,14 @@ fun ModalRetorno(
 @Composable
 fun GreetingPreview() {
     FrotaApiTheme {
-        TelaPrincipal(object : MainActivity.SaidaSync{
-            override suspend fun start(saidas: List<SaidaDTO>, saidaPrefs: SaidaPreferences) {
-                TODO("Not yet implemented")
-            }
-        }, showLoginDialog = mutableStateOf(false))
+        TelaPrincipal(
+            object : MainActivity.SaidaSync {
+                override suspend fun start(saidas: List<SaidaDTO>, saidaPrefs: SaidaPreferences) {
+                    TODO("Not yet implemented")
+                }
+            },
+            showLoginDialog = TODO()
+        )
     }
 }
 

@@ -103,6 +103,7 @@ class MainActivity : ComponentActivity() {
             if(response.code() == 401) {
                 runOnUiThread {
                     showLoginDialog.value = true
+                    Toast.makeText(this.applicationContext, " Usuário ou senha inválidos", Toast.LENGTH_LONG).show()
                 }
             }
             throw Exception("Erro de login: ${response.code()} - $errorBody")
@@ -130,6 +131,7 @@ class MainActivity : ComponentActivity() {
             saidaPrefs.saveSaidas(saidas.filter { !it.sincronizada })
 
         } catch (e: Exception) {
+            Toast.makeText(this.applicationContext, "Falha na sincronização: ${e.message}", Toast.LENGTH_LONG).show()
             println("Falha na sincronização: ${e.message}")
             println(rawBody)
         }
@@ -141,6 +143,7 @@ class MainActivity : ComponentActivity() {
 fun TelaPrincipal(saidaSync: MainActivity.SaidaSync,  showLoginDialog: MutableState<Boolean>) {
     val context = LocalContext.current
     val saidaPrefs = remember { SaidaPreferences(context.applicationContext) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
 
 //    var showLoginDialog by remember { mutableStateOf(false) }
     var showDialog by remember { mutableStateOf(false) }
@@ -217,6 +220,24 @@ fun TelaPrincipal(saidaSync: MainActivity.SaidaSync,  showLoginDialog: MutableSt
             }
         )
     }
+
+    if (showDeleteDialog && saidaSelecionada != null) {
+        DeleteDialog(
+            saida = saidaSelecionada!!,
+            onDismiss = {
+                showDeleteDialog = false
+                saidaSelecionada = null
+            },
+            onConfirm = {
+                scope.launch {
+                    saidaPrefs.removeSaida(saidaSelecionada?.id!!)
+                    showDeleteDialog = false
+                    saidaSelecionada = null
+                }
+            }
+        )
+    }
+
 
     if (showLoginDialog.value) {
         LoginDialog(onDismiss = { showLoginDialog.value = false })
@@ -296,8 +317,7 @@ fun TelaPrincipal(saidaSync: MainActivity.SaidaSync,  showLoginDialog: MutableSt
 
                         // Card com informações
                         Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Text("Motorista: ${saida.nome_motorista}")
@@ -305,6 +325,17 @@ fun TelaPrincipal(saidaSync: MainActivity.SaidaSync,  showLoginDialog: MutableSt
                                 Text("Km saída: ${saida.km_saida}")
                                 Text("Retorno: ${saida.horario_retorno}")
                                 Text("Km retorno: ${saida.km_retorno}")
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row {
+                                    OutlinedButton(
+                                        onClick = {
+                                            saidaSelecionada = saida
+                                            showDeleteDialog = true
+                                        }
+                                    ) {
+                                        Text("Excluir")
+                                    }
+                                }
                             }
                         }
                     }
@@ -486,7 +517,7 @@ fun ModalSaida(
         } else {
             // já existente, preencher com valor limpo (sem máscara)
             data = saidaExistente.data_saida?.filter { it.isDigit() } ?: ""
-            horarioSaida = saidaExistente.horario_saida?.filter { it.isDigit() } ?: ""
+            horarioSaida = saidaExistente.horario_saida.filter { it.isDigit() }
         }
     }
 
@@ -589,7 +620,7 @@ fun ModalRetorno(
             horarioRetorno = formatterHours.format(now) // Ex: "1445"
         } else {
             // Remove ":" se vier formatado
-            horarioRetorno = saidaExistente?.horario_retorno?.filter { it.isDigit() } ?: ""
+            horarioRetorno = saidaExistente.horario_retorno.filter { it.isDigit() }
         }
     }
 
@@ -640,6 +671,31 @@ fun ModalRetorno(
                     label = { Text("Odômetro Retorno") },
                     keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number)
                 )
+            }
+        }
+    )
+}
+
+@Composable
+fun DeleteDialog(
+    saida: SaidaDTO,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Excluir Saída") },
+        text = {
+            Text("Tem certeza que deseja excluir a saída de ${saida.nome_motorista}? Esta ação não poderá ser desfeita.")
+        },
+        confirmButton = {
+            Button(onClick = onConfirm) {
+                Text("Excluir")
+            }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onDismiss) {
+                Text("Cancelar")
             }
         }
     )
